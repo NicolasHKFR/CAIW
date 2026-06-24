@@ -1,0 +1,308 @@
+Technical Specification Document
+1. High Level Architecture
+                Desktop Application
+
+                       |
+                       |
+                 API Gateway
+
+                       |
+        --------------------------------
+        |              |               |
+   User Service   AI Orchestrator   Project Service
+
+                       |
+             --------------------
+             |                  |
+        LLM Service        Image Service
+
+             |
+     -------------------
+     |                 |
+ Local Models        API Models
+
+
+             |
+        Database + Storage
+
+2. Client Application
+Technology Recommendation
+
+Desktop:
+
+Option A:
+
+Electron
+React
+TypeScript
+
+Option B:
+
+Tauri
+React
+Rust backend
+
+Recommendation:
+
+Tauri + React
+
+Reason:
+
+Smaller application
+Faster
+Lower memory
+3. Backend
+Recommended Stack
+
+Backend:
+
+Python
+FastAPI
+
+Reason:
+
+AI ecosystem compatibility.
+
+Services:
+
+User Service
+
+Handles:
+
+Accounts
+Subscription
+Permissions
+Project Service
+
+Stores:
+
+Projects:
+
+Project
+|
+|- prompt
+|- generated designs
+|- constraints
+|- versions
+|- metadata
+AI Orchestrator
+
+Main intelligence layer.
+
+Responsibilities:
+
+Manage AI workflow
+Call models
+Validate outputs
+4. AI Architecture
+Pipeline
+
+User Prompt
+
+↓
+
+LLM Analysis
+
+↓
+
+Design Specification JSON
+
+↓
+
+Generation Engine
+
+↓
+
+2D Floor Plan Generator
+
+↓
+
+Image Generator
+
+↓
+
+Final Presentation
+
+Example intermediate format:
+
+{
+ "building":"apartment",
+ "surface":90,
+ "rooms":[
+  {
+   "name":"living_room",
+   "size":25
+  },
+  {
+   "name":"bedroom",
+   "size":14
+  }
+ ],
+ "style":"modern"
+}
+5. AI Models
+
+Architecture:
+
+Hybrid approach.
+
+LLM
+
+Options:
+
+Local:
+
+Llama family
+Mistral family
+
+API:
+
+configurable providers
+
+Used for:
+
+conversation
+planning
+constraint solving
+Image Generation
+
+Used for:
+
+interior concepts
+furniture images
+
+Can support:
+
+local diffusion models
+external APIs
+6. Database
+
+Recommended:
+
+PostgreSQL
+
+Tables:
+
+Users
+
+id
+email
+subscription
+created_at
+
+Projects
+
+id
+user_id
+prompt
+status
+
+Designs
+
+id
+project_id
+image
+json_definition
+version
+7. Storage
+
+For generated assets:
+
+Object storage:
+
+S3 compatible storage
+
+Store:
+
+images
+PDFs
+project files
+8. AI Configuration System
+
+Important requirement:
+
+Models must be replaceable.
+
+Configuration:
+
+AI_PROVIDER=local
+
+LLM_MODEL=mistral
+
+IMAGE_MODEL=stable-diffusion
+
+or:
+
+AI_PROVIDER=api
+
+LLM=openai
+IMAGE=providerX
+9. Future Roadmap
+V1 (3 months)
+Desktop app
+Chat interface
+Text → apartment design
+Image generation
+Save projects
+V2
+
+Add:
+
+Room editor
+Drag/drop furniture
+Better floor plans
+Image → redesign
+V3
+
+Add:
+
+Professional architecture mode
+CAD export
+3D generation
+Real furniture database
+10. Main Technical Risks
+Risk 1 — AI produces unrealistic layouts
+
+Solution:
+
+Use structured JSON intermediate representation.
+
+Risk 2 — Floor plans are inaccurate
+
+Solution:
+
+Create a rule engine:
+
+Example:
+
+Bedroom minimum:
+9m²
+
+Bathroom needs:
+water connection
+Risk 3 — Generation cost
+
+Solution:
+
+Hybrid:
+
+local models
+paid APIs
+caching
+MVP Definition
+
+The first usable version:
+
+"A desktop AI architect that turns a sentence into a complete apartment concept."
+
+User:
+
+"Design a 100m² Scandinavian apartment for a family"
+
+System:
+
+Understands requirements
+Generates floor concept
+Places furniture
+Creates visual design
+Saves project

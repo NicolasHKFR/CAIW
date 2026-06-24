@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.env
+*.egg-info/
+dist/
+build/
+*.spec
+
+# Node
+node_modules/
+frontend/dist/
+
+# Rust
+src-tauri/target/
+
+# Data
+data/
+assets/
+
+# Logs
+logs/
+
+# Environment backups
+.env.bak
+
+# OS
+.DS_Store
+Thumbs.db
