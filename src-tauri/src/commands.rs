@@ -20,9 +20,9 @@ pub struct AppConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            llm_provider: "nvidia".into(),
-            llm_endpoint: "http://localhost:11434".into(),
-            llm_model: "mistral".into(),
+            llm_provider: "openrouter".into(),
+            llm_endpoint: "https://openrouter.ai/api/v1".into(),
+            llm_model: "openrouter/free".into(),
             nvidia_api_key: "".into(),
             nvidia_endpoint: "https://integrate.api.nvidia.com/v1".into(),
             nvidia_model: "moonshotai/kimi-k2.6".into(),

@@ -33,10 +33,10 @@ async def chat_websocket(websocket: WebSocket):
         except Exception:
             pass
 
-    hb_task = asyncio.create_task(heartbeat())
     generation_project_id: str | None = None
 
     async with async_session() as db:
+        hb_task = asyncio.create_task(heartbeat())
         try:
             data = await asyncio.wait_for(websocket.receive_text(), timeout=60.0)
             payload = json.loads(data)
@@ -92,26 +92,30 @@ async def chat_websocket(websocket: WebSocket):
 
             async def run_pipeline():
                 nonlocal design_data
-                async for event in run_generation_pipeline(
-                    prompt=req.message,
-                    project_id=req.project_id,
-                    version=next_version,
-                    assets_dir=assets_dir,
-                ):
-                    logger.info("[WS] SENDING EVENT | event=%s status=%s | data_keys=%s",
-                                event.get("event"), event.get("status", event.get("event")),
-                                list(event.keys()))
-                    try:
-                        await websocket.send_json(event)
-                    except Exception:
-                        logger.warning("[WS] Failed to send event — client may have disconnected")
-                        return
+                try:
+                    async for event in run_generation_pipeline(
+                        prompt=req.message,
+                        project_id=req.project_id,
+                        version=next_version,
+                        assets_dir=assets_dir,
+                    ):
+                        logger.info("[WS] SENDING EVENT | event=%s status=%s | data_keys=%s",
+                                    event.get("event"), event.get("status", event.get("event")),
+                                    list(event.keys()))
+                        try:
+                            await websocket.send_json(event)
+                        except Exception:
+                            logger.warning("[WS] Failed to send event — client may have disconnected")
+                            return
 
-                    if event.get("event") == "complete":
-                        design_data = event.get("design", {})
-                    elif event.get("event") == "error":
-                        logger.warning("[WS] Pipeline returned error: %s", event.get("message"))
-                        return
+                        if event.get("event") == "complete":
+                            design_data = event.get("design", {})
+                        elif event.get("event") == "error":
+                            logger.warning("[WS] Pipeline returned error: %s", event.get("message"))
+                            return
+                except asyncio.CancelledError:
+                    logger.info("[WS] Pipeline task cancelled")
+                    raise
 
             task = asyncio.create_task(run_pipeline())
             _active_generations[req.project_id] = task
@@ -153,6 +157,10 @@ async def chat_websocket(websocket: WebSocket):
 
         except WebSocketDisconnect:
             logger.info("[WS] CLIENT DISCONNECTED")
+            if generation_project_id:
+                task = _active_generations.get(generation_project_id)
+                if task and not task.done():
+                    task.cancel()
         except asyncio.TimeoutError:
             logger.warning("[WS] Timed out waiting for client message")
             try:

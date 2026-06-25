@@ -4,6 +4,7 @@ from typing import Any
 
 import httpx
 
+from app.core.config import settings
 from app.models.schemas import DesignDefinition, RoomSpec, FurnitureItem
 
 logger = logging.getLogger(__name__)
@@ -214,10 +215,10 @@ async def call_llm(
 
     if provider == "ollama":
         result = await _call_ollama(prompt, endpoint, model_name)
-    elif provider in ("nvidia", "openai", "lmstudio"):
-        if provider == "nvidia" and not api_key:
-            raise ValueError("API key not configured for this model. Set it in Settings.")
-        result = await _call_openai(prompt, endpoint, model_name, api_key, model_type)
+    elif provider in ("nvidia", "openai", "lmstudio", "openrouter"):
+        if provider in ("nvidia", "openrouter") and not api_key:
+            raise ValueError(f"API key not configured for {provider}. Set it in Settings.")
+        result = await _call_openai(prompt, endpoint, model_name, api_key, model_type, provider)
     else:
         raise ValueError(f"Unknown LLM provider: {provider}")
 
@@ -240,7 +241,8 @@ async def _call_ollama(prompt: str, endpoint: str, model: str) -> DesignDefiniti
     async with httpx.AsyncClient(timeout=120.0) as client:
         resp = await client.post(f"{base}/api/generate", json=payload)
         logger.info("[LLM] RESPONSE | status=%d", resp.status_code)
-        resp.raise_for_status()
+        if resp.status_code != 200:
+            raise RuntimeError(f"Ollama returned status {resp.status_code}: {resp.text[:500]}")
         data = resp.json()
         raw = data.get("response", "")
 
@@ -269,7 +271,8 @@ async def _call_ollama_vision(image_base64: str, prompt: str, endpoint: str, mod
     async with httpx.AsyncClient(timeout=120.0) as client:
         resp = await client.post(f"{base}/api/chat", json=payload)
         logger.info("[LLM] RESPONSE | status=%d", resp.status_code)
-        resp.raise_for_status()
+        if resp.status_code != 200:
+            raise RuntimeError(f"Ollama vision returned status {resp.status_code}: {resp.text[:500]}")
         data = resp.json()
         raw = data.get("message", {}).get("content", "")
 
@@ -362,17 +365,17 @@ def _strip_reasoning(text: str) -> str:
     import re
     text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
     text = re.sub(r'\[THINK\].*?\[/THINK\]', '', text, flags=re.DOTALL)
-    text = re.sub(r'^.*?<｜end▁of▁thinking｜>', '', text, flags=re.DOTALL)
+    text = re.sub(r'^.*?\nresponse', 'response', text, flags=re.DOTALL)
     text = text.strip()
     return text
 
 
 async def _call_openai(
     prompt: str, endpoint: str, model: str, api_key: str,
-    model_type: str = "chat",
+    model_type: str = "chat", provider: str = "",
 ) -> DesignDefinition:
     base = _normalize_endpoint(endpoint)
-    logger.info("[LLM] CALL START | model=%s model_type=%s endpoint=%s", model, model_type, base)
+    logger.info("[LLM] CALL START | model=%s model_type=%s endpoint=%s provider=%s", model, model_type, base, provider)
 
     if model_type == "reasoning":
         full_prompt = f"{SYSTEM_PROMPT}\n\nUser request: {prompt}"
@@ -390,6 +393,9 @@ async def _call_openai(
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
+    if provider == "openrouter":
+        headers["HTTP-Referer"] = "https://caiw.app"
+        headers["X-Title"] = "CAIW AI Design Studio"
 
     max_retries = 2
 
@@ -407,29 +413,53 @@ async def _call_openai(
             payload["tools"] = [_build_design_tool_schema()]
             payload["tool_choice"] = {"type": "function", "function": {"name": "generate_design"}}
 
+        if provider == "openrouter" and model_type == "reasoning":
+            payload["reasoning"] = {"enabled": True}
+
         logger.info("[LLM] REQUEST attempt=%d | url=%s/v1/chat/completions | model=%s", attempt, base, model)
         payload_log = {**payload, "messages": [{"role": m["role"], "content": "(truncated)"} for m in messages[:2]]}
         logger.info("[LLM] FULL PAYLOAD:\n%s", json.dumps(payload_log, indent=2))
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=300.0) as client:
             resp = await client.post(
                 f"{base}/v1/chat/completions",
                 json=payload,
                 headers=headers,
             )
             logger.info("[LLM] RESPONSE attempt=%d | status=%d", attempt, resp.status_code)
+            if resp.status_code == 429:
+                logger.warning("[LLM] Rate limited (429) — free tier quota may be exhausted. Body: %s", resp.text[:500])
+                if attempt < max_retries:
+                    continue
+                raise RuntimeError(f"Rate limited (429) after {max_retries + 1} attempts: {resp.text[:300]}")
             resp.raise_for_status()
             data = resp.json()
+
+        if not isinstance(data, dict):
+            logger.error("[LLM] Response is not a dict: type=%s value=%s", type(data).__name__, str(data)[:500])
+            raise ValueError(
+                f"LLM returned unexpected response type: {type(data).__name__}. "
+                f"Expected a JSON object. Response: {str(data)[:200]}"
+            )
 
         choices = data.get("choices")
         if not choices or not isinstance(choices, list) or len(choices) == 0:
             raise ValueError(
                 f"LLM returned no completion choices. "
                 f"Response keys: {list(data.keys())}. "
-                f"Check that the model at {endpoint} supports chat completions."
+                f"Check that the model at {endpoint} supports chat completions. "
+                f"For free-tier models, this may indicate rate-limit exhaustion "
+                f"(OpenRouter free tier: ~20 req/day without purchased credits)."
             )
 
         usage = data.get("usage", {})
+        reasoning_details = choices[0].get("message", {}).get("reasoning_details")
+        if reasoning_details:
+            if isinstance(reasoning_details, dict):
+                logger.info("[LLM] REASONING DETAILS (%d tokens): %s",
+                            reasoning_details.get("tokens", "?"), reasoning_details.get("summary", ""))
+            elif isinstance(reasoning_details, list):
+                logger.info("[LLM] REASONING DETAILS (list, %d items)", len(reasoning_details))
 
         try:
             if model_type == "tools" and attempt == 0:
@@ -456,9 +486,12 @@ async def _call_openai(
                 raise
             logger.warning("[LLM] JSON parse failed attempt=%d, sending correction prompt: %s", attempt, e)
             broken = raw_args if (model_type == "tools" and attempt == 0) else raw
+            assistant_msg = {"role": "assistant", "content": broken}
+            if reasoning_details and provider == "openrouter":
+                assistant_msg["reasoning_details"] = reasoning_details
             messages = [
                 *messages,
-                {"role": "assistant", "content": broken},
+                assistant_msg,
                 {"role": "user", "content": f"The JSON you returned has syntax errors: {e}. Fix all syntax errors and return ONLY valid JSON matching the required schema. No markdown wrapping, no explanation."},
             ]
             continue
@@ -503,19 +536,34 @@ async def _call_openai_vision(
 
     logger.info("[LLM] REQUEST VISION | url=%s/v1/chat/completions | model=%s", base, model)
 
-    async with httpx.AsyncClient(timeout=180.0) as client:
+    async with httpx.AsyncClient(timeout=300.0) as client:
         resp = await client.post(
             f"{base}/v1/chat/completions",
             json=payload,
             headers=headers,
         )
         logger.info("[LLM] RESPONSE VISION | status=%d", resp.status_code)
+        if resp.status_code == 429:
+            logger.warning("[LLM] Rate limited (429) — free tier quota may be exhausted. Body: %s", resp.text[:500])
+            raise RuntimeError(f"Rate limited (429): {resp.text[:300]}")
         resp.raise_for_status()
         data = resp.json()
 
+    if not isinstance(data, dict):
+        logger.error("[LLM] VISION response is not a dict: type=%s value=%s", type(data).__name__, str(data)[:500])
+        raise ValueError(
+            f"LLM vision returned unexpected response type: {type(data).__name__}. "
+            f"Expected a JSON object. Response: {str(data)[:200]}"
+        )
+
     choices = data.get("choices")
     if not choices or not isinstance(choices, list) or len(choices) == 0:
-        raise ValueError("LLM returned no completion choices for vision request.")
+        raise ValueError(
+            f"LLM vision returned no completion choices. "
+            f"Response keys: {list(data.keys())}. "
+            f"Check that the model supports multimodal chat completions. "
+            f"For free-tier models, this may indicate rate-limit exhaustion."
+        )
 
     tc = choices[0].get("message", {}).get("tool_calls")
     if tc:
@@ -542,9 +590,9 @@ async def call_llm_vision(
 
     if provider == "ollama":
         result = await _call_ollama_vision(image_base64, prompt, endpoint, model_name)
-    elif provider in ("nvidia", "openai", "lmstudio"):
-        if provider == "nvidia" and not api_key:
-            raise ValueError("API key not configured for this model. Set it in Settings.")
+    elif provider in ("nvidia", "openai", "lmstudio", "openrouter"):
+        if provider in ("nvidia", "openrouter") and not api_key:
+            raise ValueError(f"API key not configured for {provider}. Set it in Settings.")
         result = await _call_openai_vision(image_base64, prompt, endpoint, model_name, api_key)
     else:
         raise ValueError(f"Unknown LLM provider for vision: {provider}")
@@ -561,7 +609,7 @@ def _to_definition(data: dict) -> DesignDefinition:
         furniture = []
         for f in r.get("furniture", []):
             if "name" not in f or not f["name"]:
-                for alt in ("type", "item", "label", " balancer"):
+                for alt in ("type", "item", "label"):
                     if alt in f and f[alt]:
                         f["name"] = f[alt]
                         break
@@ -643,9 +691,14 @@ async def fetch_available_models(provider: str, endpoint: str) -> list[str]:
             resp.raise_for_status()
             data = resp.json()
             return [m["name"] for m in data.get("models", [])]
-    elif provider in ("nvidia", "openai", "lmstudio"):
+    elif provider in ("nvidia", "openai", "lmstudio", "openrouter"):
+        headers = {}
+        if provider == "openrouter":
+            headers["Authorization"] = f"Bearer {settings.openrouter_api_key}"
+            headers["HTTP-Referer"] = "https://caiw.app"
+            headers["X-Title"] = "CAIW AI Design Studio"
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(f"{base}/v1/models")
+            resp = await client.get(f"{base}/v1/models", headers=headers)
             resp.raise_for_status()
             data = resp.json()
             return [m["id"] for m in data.get("data", [])]

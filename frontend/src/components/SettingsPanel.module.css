@@ -202,6 +202,18 @@
   font-family: var(--font-mono);
 }
 
+.activeTag {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--color-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: rgba(233, 69, 96, 0.12);
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
 .modelActions {
   display: flex;
   gap: 4px;

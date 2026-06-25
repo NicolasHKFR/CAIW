@@ -30,37 +30,37 @@ def extract_furniture_crops(definition_json: dict, render_path: str, assets_dir:
     svg_w = int((max_x - min_x) * scale) + padding * 2
     svg_h = int((max_y - min_y) * scale) + padding * 2
 
-    img = Image.open(render_path)
-    img_w, img_h = img.size
-
     catalog_dir = os.path.join(assets_dir, "catalog")
     os.makedirs(catalog_dir, exist_ok=True)
 
     items = []
-    for room in rooms:
-        room_type = room.get("type", "room")
-        for furniture in room.get("furniture", []):
-            name = furniture.get("name", "furniture")
-            f_id = furniture.get("id", f"{name}_{len(items)}")
-            fw = furniture.get("width", 1)
-            fh = furniture.get("length", 1)
+    with Image.open(render_path) as img:
+        img_w, img_h = img.size
 
-            svg_fx = (room.get("x", 0) + furniture.get("x", 0)) * scale + padding
-            svg_fy = (room.get("y", 0) + furniture.get("y", 0)) * scale + padding
-            svg_fw = fw * scale
-            svg_fh = fh * scale
+        for room in rooms:
+            room_type = room.get("type", "room")
+            for furniture in room.get("furniture", []):
+                name = furniture.get("name", "furniture")
+                f_id = furniture.get("id", f"{name}_{len(items)}")
+                fw = furniture.get("width", 1)
+                fh = furniture.get("length", 1)
 
-            r_x = max(0, int(svg_fx / svg_w * img_w))
-            r_y = max(0, int(svg_fy / svg_h * img_h))
-            r_w = max(1, int(svg_fw / svg_w * img_w))
-            r_h = max(1, int(svg_fh / svg_h * img_h))
+                svg_fx = (room.get("x", 0) + furniture.get("x", 0)) * scale + padding
+                svg_fy = (room.get("y", 0) + furniture.get("y", 0)) * scale + padding
+                svg_fw = fw * scale
+                svg_fh = fh * scale
 
-            crop = img.crop((r_x, r_y, r_x + r_w, r_y + r_h))
-            crop_path = os.path.join(catalog_dir, f"{f_id}.png")
-            crop.save(crop_path)
-            logger.info("[IMG] Extracted crop: %s → %s (%dx%d)", name, crop_path, r_w, r_h)
+                r_x = max(0, int(svg_fx / svg_w * img_w))
+                r_y = max(0, int(svg_fy / svg_h * img_h))
+                r_w = max(1, int(svg_fw / svg_w * img_w))
+                r_h = max(1, int(svg_fh / svg_h * img_h))
 
-            items.append({
+                crop = img.crop((r_x, r_y, r_x + r_w, r_y + r_h))
+                crop_path = os.path.join(catalog_dir, f"{f_id}.png")
+                crop.save(crop_path)
+                logger.info("[IMG] Extracted crop: %s → %s (%dx%d)", name, crop_path, r_w, r_h)
+
+                items.append({
                 "name": name,
                 "default_width": fw,
                 "default_length": fh,
@@ -71,7 +71,7 @@ def extract_furniture_crops(definition_json: dict, render_path: str, assets_dir:
     return items
 
 
-def _generate_floor_plan_svg(definition_json: dict) -> str:
+def generate_floor_plan_svg(definition_json: dict) -> str:
     rooms = definition_json.get("rooms", [])
     if not rooms:
         return "<svg width='400' height='400' xmlns='http://www.w3.org/2000/svg'><rect fill='#f0f0f0' width='400' height='400'/></svg>"
@@ -188,7 +188,7 @@ async def generate_images(definition_json: dict, style: str, assets_dir: str) ->
 
     os.makedirs(assets_dir, exist_ok=True)
 
-    svg_content = _generate_floor_plan_svg(definition_json)
+    svg_content = generate_floor_plan_svg(definition_json)
     plan_path = os.path.join(assets_dir, "floor_plan.svg")
     async with aiofiles.open(plan_path, "w") as f:
         await f.write(svg_content)
@@ -196,7 +196,7 @@ async def generate_images(definition_json: dict, style: str, assets_dir: str) ->
     render_path = None
     if not settings.mock_ai:
         try:
-            render_path = await _call_sd_api(definition_json, style, assets_dir)
+            render_path = await call_sd_api(definition_json, style, assets_dir)
         except Exception as e:
             logger.warning(f"Stable Diffusion generation failed: {e}")
 
@@ -267,7 +267,7 @@ def _generate_floor_plan_png(definition_json: dict, width: int, height: int) -> 
     return img
 
 
-async def _call_sd_api(definition_json: dict, style: str, assets_dir: str) -> Optional[str]:
+async def call_sd_api(definition_json: dict, style: str, assets_dir: str) -> Optional[str]:
     prompt = f"{style} interior design, minimalist furniture, oak wood flooring, soft atmospheric lighting, highly detailed, photorealistic 8k architectural render"
 
     try:
@@ -276,10 +276,7 @@ async def _call_sd_api(definition_json: dict, style: str, assets_dir: str) -> Op
         png_img.save(png_path)
 
         import shutil
-        comfy_input = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-            "ComfyUI", "input",
-        )
+        comfy_input = settings.comfy_input_dir
         os.makedirs(comfy_input, exist_ok=True)
         control_filename = f"caiw_control_{uuid.uuid4().hex[:8]}.png"
         control_dst = os.path.join(comfy_input, control_filename)

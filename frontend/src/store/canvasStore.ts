@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { RoomSpec } from '../types'
 
 export interface RoomBounds {
   x: number; y: number; w: number; h: number
@@ -15,6 +16,8 @@ interface CanvasState {
   draggedRoomId: string | null
   compareVersion: number | null
   selectedFloor: number
+  undoStack: RoomSpec[][]
+  redoStack: RoomSpec[][]
 
   setScale: (s: number) => void
   setPan: (x: number, y: number) => void
@@ -27,6 +30,9 @@ interface CanvasState {
   dragRoom: (id: string | null) => void
   setCompareVersion: (v: number | null) => void
   setSelectedFloor: (floor: number) => void
+  pushUndo: (rooms: RoomSpec[]) => void
+  undo: () => RoomSpec[] | null
+  redo: () => RoomSpec[] | null
 }
 
 export const useCanvasStore = create<CanvasState>((set) => ({
@@ -40,6 +46,8 @@ export const useCanvasStore = create<CanvasState>((set) => ({
   draggedRoomId: null,
   compareVersion: null,
   selectedFloor: 1,
+  undoStack: [],
+  redoStack: [],
 
   setScale: (scale) => set({ scale: Math.max(5, Math.min(200, scale)) }),
   setPan: (panX, panY) => set({ panX, panY }),
@@ -71,4 +79,28 @@ export const useCanvasStore = create<CanvasState>((set) => ({
   dragRoom: (id) => set({ draggedRoomId: id }),
   setCompareVersion: (v) => set({ compareVersion: v }),
   setSelectedFloor: (floor) => set({ selectedFloor: floor }),
+  pushUndo: (rooms) => set((s) => ({
+    undoStack: [...s.undoStack.slice(-49), rooms.map(r => ({ ...r, furniture: r.furniture.map(f => ({ ...f })) }))],
+    redoStack: [],
+  })),
+  undo: (): RoomSpec[] | null => {
+    const state = useCanvasStore.getState()
+    if (!state.undoStack.length) return null
+    const prev: RoomSpec[] = state.undoStack[state.undoStack.length - 1]
+    set((s) => ({
+      undoStack: s.undoStack.slice(0, -1),
+      redoStack: [...s.redoStack, prev],
+    }))
+    return prev
+  },
+  redo: (): RoomSpec[] | null => {
+    const state = useCanvasStore.getState()
+    if (!state.redoStack.length) return null
+    const next: RoomSpec[] = state.redoStack[state.redoStack.length - 1]
+    set((s) => ({
+      redoStack: s.redoStack.slice(0, -1),
+      undoStack: [...s.undoStack, next],
+    }))
+    return next
+  },
 }))

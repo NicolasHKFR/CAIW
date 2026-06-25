@@ -13,12 +13,10 @@ interface ToastState {
   removeToast: (id: string) => void
 }
 
-let counter = 0
-
 export const useToastStore = create<ToastState>((set, get) => ({
   toasts: [],
   addToast: (toast) => {
-    const id = `toast_${++counter}`
+    const id = crypto.randomUUID()
     set((s) => ({ toasts: [...s.toasts, { ...toast, id }] }))
     const ms = toast.timeout ?? 4000
     if (ms > 0) {

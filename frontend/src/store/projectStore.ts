@@ -56,6 +56,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         d.id === designId ? { ...d, json_definition: definition } : d
       ),
     }))
+    const { activeProjectId, designs } = get()
+    const design = designs.find((d) => d.id === designId)
+    if (activeProjectId && design?.version != null) {
+      api.updateDesign(activeProjectId, design.version, definition).catch(() => {})
+    }
   },
 
   loadDesigns: async (projectId) => {

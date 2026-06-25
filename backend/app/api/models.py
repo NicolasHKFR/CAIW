@@ -1,6 +1,6 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, func, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -13,11 +13,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/models", tags=["models"])
 
 
-def _mask_key(key: str) -> str:
-    if not key or len(key) < 8:
-        return key
-    return key[:6] + "****" + key[-4:]
-
+from app.api.settings_api import mask_key
 
 VISION_KEYWORDS = [
     "vision", "llava", "internvl", "cogvlm", "qwen-vl", "qwen2-vl",
@@ -38,7 +34,7 @@ def _to_response(m: Model) -> ModelResponse:
         provider=m.provider,
         model_name=m.model_name,
         endpoint=m.endpoint,
-        api_key=_mask_key(m.api_key),
+        api_key=mask_key(m.api_key),
         model_type=m.model_type,
         is_active=m.is_active,
         supports_vision=_detect_vision(m.model_name),

@@ -22,12 +22,12 @@ export function ModelViewer3DPage() {
   }, [projectId, version, loadDesign])
 
   const handleBack = useCallback(() => {
-    if (projectId && designVersion) {
-      navigate(`/design-editor?project=${projectId}&version=${designVersion}`)
+    if (projectId) {
+      navigate(`/project/${projectId}`)
     } else {
-      navigate('/')
+      navigate(-1)
     }
-  }, [navigate, projectId, designVersion])
+  }, [navigate, projectId])
 
   if (loading) {
     return (
@@ -48,6 +48,9 @@ export function ModelViewer3DPage() {
       <div className={styles.page}>
         <header className={styles.header}>
           <div className={styles.headerLeft}>
+            <button className={styles.homeBtn} onClick={() => navigate('/')}>
+              CAIW
+            </button>
             <button className={styles.backBtn} onClick={handleBack}>
               &larr; Back
             </button>
@@ -69,6 +72,9 @@ export function ModelViewer3DPage() {
       <div className={styles.page}>
         <header className={styles.header}>
           <div className={styles.headerLeft}>
+            <button className={styles.homeBtn} onClick={() => navigate('/')}>
+              CAIW
+            </button>
             <button className={styles.backBtn} onClick={handleBack}>
               &larr; Back
             </button>
@@ -88,6 +94,9 @@ export function ModelViewer3DPage() {
     <div className={styles.page}>
       <header className={styles.header}>
         <div className={styles.headerLeft}>
+          <button className={styles.homeBtn} onClick={() => navigate('/')}>
+            CAIW
+          </button>
           <button className={styles.backBtn} onClick={handleBack}>
             &larr; Back
           </button>

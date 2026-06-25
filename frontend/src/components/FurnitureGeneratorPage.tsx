@@ -147,8 +147,11 @@ export function FurnitureGeneratorPage() {
     <div className={styles.page}>
       <header className={styles.header}>
         <div className={styles.headerLeft}>
-          <button className={styles.backBtn} onClick={() => navigate('/')}>
-            &larr; Studio
+          <button className={styles.homeBtn} onClick={() => navigate('/')}>
+            CAIW
+          </button>
+          <button className={styles.backBtn} onClick={() => navigate(-1)}>
+            &larr; Back
           </button>
           <h1 className={styles.title}>Furniture Generator</h1>
         </div>

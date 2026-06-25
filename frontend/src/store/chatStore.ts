@@ -39,7 +39,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   loaded: false,
 
   cancelGeneration: () => {
-    const ws = get().currentWs
+    const { currentWs: ws } = get()
     if (ws) {
       ws.close()
       set({ currentWs: null, isGenerating: false, status: 'Cancelled' })
@@ -48,9 +48,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   sendMessage: (projectId, text) => {
-    const { currentWs, isGenerating } = get()
-    if (isGenerating && currentWs) {
-      currentWs.close()
+    const { currentWs: oldWs, isGenerating } = get()
+    if (isGenerating && oldWs) {
+      oldWs.close()
+      set({ currentWs: null })
     }
 
     const userMsg: ChatMessage = {
@@ -109,16 +110,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
       onMessage,
       (err) => {
         console.error('[chatStore] WebSocket error:', err)
+        useToastStore.getState().addToast({ message: 'WebSocket connection error — retrying', type: 'error' })
       },
       () => {
         const state = get()
-        if (state.isGenerating) {
+        if (state.currentWs === ws) {
           set({ isGenerating: false, status: null, currentWs: null })
-          useToastStore.getState().addToast({ message: 'Connection lost', type: 'error' })
+          useToastStore.getState().addToast({ message: 'Connection lost — generation may not have completed', type: 'error' })
         }
-      },
-      (newWs) => {
-        set({ currentWs: newWs })
       },
     )
     set({ currentWs: ws })

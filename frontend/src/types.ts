@@ -5,6 +5,7 @@ export interface FurnitureItem {
   y: number
   width: number
   length: number
+  shape?: string
 }
 
 export interface RoomSpec {
@@ -127,14 +128,10 @@ export interface AppSettings {
   nvidia_api_key: string
   nvidia_endpoint: string
   nvidia_model: string
-  image_provider: string
+  openrouter_api_key: string
+  openrouter_endpoint: string
+  openrouter_model: string
   image_endpoint: string
-  openai_api_key: string
-  replicate_api_key: string
-  sd_controlnet_model: string
-  sd_steps: number
-  sd_width: number
-  sd_height: number
 }
 
 export interface ModelItem {
@@ -164,4 +161,41 @@ export interface FurnitureGenerateRequest {
   default_length: number
   style: string
   sd_model: string
+}
+
+export interface ScoreBreakdown {
+  overall: number
+  grade: string
+  space_efficiency: number
+  circulation: number
+  natural_light: number
+  proportions: number
+  furniture_fit: number
+  warnings: string[]
+}
+
+export interface RoomSunlight {
+  id: string
+  sunlight_hours: number
+  annual_kwh: number
+  orientation: string
+}
+
+export interface SunlightData {
+  rooms: RoomSunlight[]
+  orientation_optimal: number
+  energy_estimate: { heating_kwh: number; cooling_kwh: number }
+}
+
+export interface EvolutionEntry {
+  version: number
+  timestamp: string
+  rooms_added: string[]
+  rooms_removed: string[]
+  area_change: number
+}
+
+export interface IntelligenceResponse {
+  score: ScoreBreakdown
+  sunlight: SunlightData
 }

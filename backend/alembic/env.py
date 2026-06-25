@@ -1,3 +1,4 @@
+import asyncio
 import sys
 from pathlib import Path
 
@@ -5,7 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from alembic import context
 from app.core.database import engine, Base
-from app.models.database import Project, Design, Model, FurnitureCatalog, Settings
+from app.models.database import Project, Design, Model, FurnitureCatalog, AppSetting
 
 target_metadata = Base.metadata
 
@@ -18,11 +19,13 @@ def run_migrations_offline():
 
 
 def run_migrations_online():
-    connectable = engine
-    with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
-        with context.begin_transaction():
-            context.run_migrations()
+    async def do_run():
+        async with engine.connect() as connection:
+            context.configure(connection=connection, target_metadata=target_metadata)
+            with context.begin_transaction():
+                context.run_migrations()
+
+    asyncio.run(do_run())
 
 
 if context.is_offline_mode():

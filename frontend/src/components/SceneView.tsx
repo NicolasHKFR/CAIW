@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react'
+import { useMemo, useState, useCallback, useEffect } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, TransformControls, Grid, Html } from '@react-three/drei'
 import * as THREE from 'three'
@@ -224,7 +224,7 @@ function SceneContent() {
   const {
     definition, activeFloor, wallHeight, showWalls, showLabels, showGrid,
     selection, selectObject, clearSelection,
-    showDoors, showWindows,
+    showDoors, showWindows, mode,
   } = useSceneStore()
 
   const [transformTarget, setTransformTarget] = useState<THREE.Object3D | null>(null)
@@ -273,6 +273,17 @@ function SceneContent() {
     }
     return map
   }, [doorOpenings, windowOpenings])
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selection.objectType === 'room') {
+        e.preventDefault()
+        useSceneStore.getState().removeSelectedRoom()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selection.objectType])
 
   const handleBackgroundClick = useCallback(() => {
     clearSelection()
@@ -337,7 +348,7 @@ function SceneContent() {
       )}
 
       {rooms.map(room => {
-        const wp = toWorld(room.x, room.y)
+        const wp = toWorld(room.x + room.w / 2, room.y + room.h / 2)
         const openings = allOpenings.get(room.id) ?? []
         return (
           <group key={room.id}>
@@ -348,8 +359,6 @@ function SceneContent() {
               wallHeight={wallHeight}
               showWalls={showWalls}
               isSelected={selection.objectId === room.id && selection.objectType === 'room'}
-              onClick={() => {}}
-              onGroupRef={() => {}}
               openings={openings}
             />
             <mesh
@@ -381,15 +390,30 @@ function SceneContent() {
             {(room.furniture ?? []).map(f => {
               const fw = toWorld(room.x + f.x + f.width / 2, room.y + f.y + f.length / 2)
               return (
-                <FurnitureMesh
-                  key={f.id}
-                  furniture={f}
-                  worldX={fw.x}
-                  worldZ={fw.z}
-                  isSelected={selection.objectId === f.id && selection.objectType === 'furniture'}
-                  onClick={() => {}}
-                  onGroupRef={() => {}}
-                />
+                <group key={f.id}>
+                  <FurnitureMesh
+                    furniture={f}
+                    worldX={fw.x}
+                    worldZ={fw.z}
+                    isSelected={selection.objectId === f.id && selection.objectType === 'furniture'}
+                  />
+                  {mode === 'furniture' && (
+                    <Html position={[fw.x, 1.2, fw.z]} center>
+                      <div style={{
+                        background: 'rgba(0,0,0,0.6)',
+                        color: '#fff',
+                        padding: '2px 6px',
+                        borderRadius: 4,
+                        fontSize: 10,
+                        fontFamily: 'Inter, sans-serif',
+                        pointerEvents: 'none',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {f.name}
+                      </div>
+                    </Html>
+                  )}
+                </group>
               )
             })}
 

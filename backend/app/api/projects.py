@@ -75,11 +75,17 @@ async def bulk_delete_projects(body: BulkDeleteRequest, db: AsyncSession = Depen
     deleted_ids = []
     for p in projects:
         await db.delete(p)
-        assets_dir = f"{settings.assets_path}/{p.id}"
-        if os.path.isdir(assets_dir):
-            shutil.rmtree(assets_dir)
         deleted_ids.append(p.id)
 
     await db.commit()
+
+    for pid in deleted_ids:
+        assets_dir = f"{settings.assets_path}/{pid}"
+        if os.path.isdir(assets_dir):
+            try:
+                shutil.rmtree(assets_dir)
+            except Exception:
+                logger.warning("[PROJECTS] Failed to delete assets for %s", pid)
+
     logger.info("[PROJECTS] Bulk deleted %d projects: %s", len(deleted_ids), deleted_ids)
     return {"deleted_count": len(deleted_ids), "deleted_ids": deleted_ids}

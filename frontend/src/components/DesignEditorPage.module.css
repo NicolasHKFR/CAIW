@@ -29,6 +29,23 @@
   gap: 8px;
 }
 
+.homeBtn {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-primary);
+  letter-spacing: 1px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-family: var(--font-sans);
+  text-decoration: none;
+}
+
+.homeBtn:hover {
+  opacity: 0.8;
+}
+
 .backBtn {
   padding: 6px 12px;
   font-size: 12px;

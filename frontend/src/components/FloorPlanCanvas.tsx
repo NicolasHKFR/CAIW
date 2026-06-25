@@ -6,18 +6,7 @@ import { useToastStore } from '../store/toastStore'
 import { api } from '../api'
 import type { RoomSpec, DesignDefinition } from '../types'
 import styles from './FloorPlanCanvas.module.css'
-
-const ROOM_COLORS = [
-  '#e8dcc8', '#c8d8e8', '#d4e8c8', '#f0d0d0', '#d0d0f0', '#f0e8c0', '#e0e0e0',
-]
-
-function hashColor(id: string) {
-  let hash = 0
-  for (let i = 0; i < id.length; i++) {
-    hash = id.charCodeAt(i) + ((hash << 5) - hash)
-  }
-  return ROOM_COLORS[Math.abs(hash) % ROOM_COLORS.length]
-}
+import { hashColor } from '../constants'
 
 function screenToMeters(
   screenX: number, screenY: number,
@@ -97,12 +86,13 @@ export function FloorPlanCanvas() {
     selectedRoomId, hoveredRoomId, compareVersion, selectedFloor,
     setScale, setPan, zoomIn, zoomOut,
     selectRoom, hoverRoom, resetView, setCompareVersion, fitToContent, setSelectedFloor,
+    pushUndo, undo, redo,
   } = useCanvasStore()
   const { designs, activeProjectId, updateDesignDefinition } = useProjectStore()
 
-  const activeDesign = designs.find(
-    (d) => d.project_id === activeProjectId
-  )
+  const activeDesign = designs
+    .filter((d) => d.project_id === activeProjectId)
+    .sort((a, b) => b.version - a.version)[0] ?? null
 
   const compareDesign = compareVersion != null
     ? designs.find((d) => d.version === compareVersion)
@@ -248,6 +238,7 @@ export function FloorPlanCanvas() {
         dragStartPos.current = { mx, my }
         lastPos.current = { x: e.clientX, y: e.clientY }
         localRooms.current = definition.rooms.map((r) => ({ ...r }))
+        pushUndo(definition.rooms)
         return
       }
 
@@ -364,6 +355,40 @@ export function FloorPlanCanvas() {
     setCompareVersion(val ? Number(val) : null)
   }
 
+  const handleUndo = useCallback(() => {
+    const rooms = undo()
+    if (!rooms || !definition || !activeDesign || !activeProjectId) return
+    const updatedDef: DesignDefinition = { ...definition, rooms }
+    updateDesignDefinition(activeDesign.id, updatedDef)
+    api.updateDesign(activeProjectId, version, updatedDef).catch(() => {
+      addToast({ message: 'Failed to undo', type: 'error' })
+    })
+  }, [definition, activeDesign, activeProjectId, version, undo, updateDesignDefinition, addToast])
+
+  const handleRedo = useCallback(() => {
+    const rooms = redo()
+    if (!rooms || !definition || !activeDesign || !activeProjectId) return
+    const updatedDef: DesignDefinition = { ...definition, rooms }
+    updateDesignDefinition(activeDesign.id, updatedDef)
+    api.updateDesign(activeProjectId, version, updatedDef).catch(() => {
+      addToast({ message: 'Failed to redo', type: 'error' })
+    })
+  }, [definition, activeDesign, activeProjectId, version, redo, updateDesignDefinition, addToast])
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        handleUndo()
+      } else if (e.ctrlKey && e.key.toLowerCase() === 'z' && e.shiftKey) {
+        e.preventDefault()
+        handleRedo()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleUndo, handleRedo])
+
   return (
     <div className={styles.container} ref={containerRef}>
       <div className={styles.toolbar}>
@@ -398,6 +423,12 @@ export function FloorPlanCanvas() {
               ))}
             </select>
           )}
+          <button onClick={handleUndo} className={styles.toolBtn} title="Undo move (Ctrl+Z)">
+            ↩
+          </button>
+          <button onClick={handleRedo} className={styles.toolBtn} title="Redo move (Ctrl+Shift+Z)">
+            ↪
+          </button>
           <button onClick={() => selectRoom(null)} className={styles.toolBtn} title="Deselect room">
             Deselect
           </button>

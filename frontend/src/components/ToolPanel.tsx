@@ -1,5 +1,5 @@
 import { useSceneStore } from '../store/sceneStore'
-import { hashColor } from './RoomMesh'
+import { hashColor } from '../constants'
 import styles from './ToolPanel.module.css'
 
 export function ToolPanel() {

@@ -1,3 +1,4 @@
+import html
 import json
 import logging
 import os
@@ -11,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.models.database import Project, Design
-from app.services.image_service import _generate_floor_plan_svg
+from app.services.image_service import generate_floor_plan_svg
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/export", tags=["export"])
@@ -20,21 +21,24 @@ router = APIRouter(prefix="/api/export", tags=["export"])
 def _build_rooms_table(definition: dict) -> str:
     rows = ""
     for r in definition.get("rooms", []):
-        rows += f"""<tr><td style="padding:4px;border:1px solid #ccc;">{r.get('id', '')}</td><td style="padding:4px;border:1px solid #ccc;">{r.get('type', '')}</td><td style="padding:4px;border:1px solid #ccc;">{r.get('targetArea', 0)}m²</td><td style="padding:4px;border:1px solid #ccc;">{r.get('w', 0):.1f}×{r.get('h', 0):.1f}m</td></tr>\n"""
+        rid = html.escape(r.get("id", ""))
+        rtype = html.escape(r.get("type", ""))
+        rows += f"""<tr><td style="padding:4px;border:1px solid #ccc;">{rid}</td><td style="padding:4px;border:1px solid #ccc;">{rtype}</td><td style="padding:4px;border:1px solid #ccc;">{r.get('targetArea', 0)}m²</td><td style="padding:4px;border:1px solid #ccc;">{r.get('w', 0):.1f}×{r.get('h', 0):.1f}m</td></tr>\n"""
     return rows
 
 
 def _build_materials_html(definition: dict) -> str:
     if not definition.get("materials"):
         return ""
-    html = "<hr/><h3>Material Suggestions</h3><ul>"
+    buf = "<hr/><h3>Material Suggestions</h3><ul>"
     for m in definition["materials"]:
         cost = m.get("estimatedCostPerM2", 0)
         unit = m.get("unit", "m²")
-        desc = m.get("description", "")
-        html += f"<li><strong>{m.get('name', '')}</strong>: {desc} (est. ${cost:.0f}/{unit})</li>"
-    html += "</ul>"
-    return html
+        desc = html.escape(m.get("description", ""))
+        name = html.escape(m.get("name", ""))
+        buf += f"<li><strong>{name}</strong>: {desc} (est. ${cost:.0f}/{unit})</li>"
+    buf += "</ul>"
+    return buf
 
 
 @router.get("/projects/{project_id}/versions/{version}/pdf")
@@ -49,7 +53,7 @@ async def export_pdf(project_id: str, version: int, db: AsyncSession = Depends(g
         raise HTTPException(status_code=404, detail="Design not found")
 
     definition = json.loads(design.json_definition)
-    svg_content = _generate_floor_plan_svg(definition)
+    svg_content = generate_floor_plan_svg(definition)
 
     btype = definition.get("buildingType", "N/A")
     style = definition.get("style", "N/A")
@@ -59,7 +63,7 @@ async def export_pdf(project_id: str, version: int, db: AsyncSession = Depends(g
 <html><head><meta charset="utf-8"></head>
 <body style="margin:0;padding:20px;font-family:sans-serif;">
 <h1 style="text-align:center;color:#333;">Floor Plan v{version}</h1>
-<div style="text-align:center;"><p>Building: {btype} | Style: {style} | Area: {area}m²</p></div>
+<div style="text-align:center;"><p>Building: {html.escape(btype)} | Style: {html.escape(style)} | Area: {area}m²</p></div>
 <div style="text-align:center;">{svg_content}</div>
 <hr style="margin:20px 0;" />
 <h3>Rooms</h3>

@@ -56,8 +56,6 @@ async def import_from_image(
         )
 
     user_prompt = prompt.strip() or "Analyze this floor plan image and extract the design as a structured JSON specification. Identify room types, approximate dimensions, layout, connections between rooms, and building style."
-    if prompt.strip():
-        user_prompt = prompt.strip()
 
     logger.info(
         "[IMPORT] Processing image: %s (%d bytes, %s) with model=%s/%s prompt=%r",

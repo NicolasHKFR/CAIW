@@ -4,7 +4,9 @@ import styles from './DesignPreview.module.css'
 
 export function DesignPreview() {
   const { designs, activeProjectId } = useProjectStore()
-  const activeDesign = designs.find((d) => d.project_id === activeProjectId)
+  const activeDesign = designs
+    .filter((d) => d.project_id === activeProjectId)
+    .sort((a, b) => b.version - a.version)[0] ?? null
 
   if (!activeDesign) return null
 

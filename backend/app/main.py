@@ -10,7 +10,7 @@ import httpx
 from app.core.config import settings
 from app.core.database import init_db
 from app.core.logging import setup_logging, add_request_logging_middleware
-from app.api import projects, designs, models, settings_api, ws, catalog, messages, export, import_api
+from app.api import projects, designs, models, settings_api, ws, catalog, messages, export, import_api, intelligence
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +52,7 @@ app.include_router(catalog.router)
 app.include_router(messages.router)
 app.include_router(export.router)
 app.include_router(import_api.router)
+app.include_router(intelligence.router)
 
 assets_dir = os.path.abspath(settings.assets_path)
 os.makedirs(assets_dir, exist_ok=True)

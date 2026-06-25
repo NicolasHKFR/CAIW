@@ -6,8 +6,20 @@ export interface FurnitureMeshProps {
   worldX: number
   worldZ: number
   isSelected: boolean
-  onClick: () => void
-  onGroupRef: (group: Group | null) => void
+  onClick?: () => void
+  onGroupRef?: (group: Group | null) => void
+}
+
+const SHAPE_HEIGHTS: Record<string, number> = {
+  sofa: 0.8, bed: 0.5, table: 0.75, chair: 0.45, cabinet: 1.2,
+  bathtub: 0.6, toilet: 0.4, desk: 0.75, shelf: 1.8, stairs: 2.5,
+  wardrobe: 2.0, box: 0.8,
+}
+
+const SHAPE_COLORS: Record<string, string> = {
+  sofa: '#8B7355', bed: '#c4a882', table: '#a0845c', chair: '#9c8c7c',
+  cabinet: '#8B7D6B', bathtub: '#d4d4d4', toilet: '#e8e8e8', desk: '#7c6e5a',
+  shelf: '#8B7D6B', stairs: '#a0a0a0', wardrobe: '#7c6e5a', box: '#b8a898',
 }
 
 function getShapeType(name: string): string {
@@ -26,24 +38,8 @@ function getShapeType(name: string): string {
   return 'box'
 }
 
-function getShapeHeight(name: string): number {
-  const shape = getShapeType(name)
-  const heights: Record<string, number> = {
-    sofa: 0.8, bed: 0.5, table: 0.75, chair: 0.45, cabinet: 1.2,
-    bathtub: 0.6, toilet: 0.4, desk: 0.75, shelf: 1.8, stairs: 2.5,
-    wardrobe: 2.0, box: 0.8,
-  }
-  return heights[shape] ?? 0.8
-}
-
-function getShapeColor(name: string): string {
-  const shape = getShapeType(name)
-  const colors: Record<string, string> = {
-    sofa: '#8B7355', bed: '#c4a882', table: '#a0845c', chair: '#9c8c7c',
-    cabinet: '#8B7D6B', bathtub: '#d4d4d4', toilet: '#e8e8e8', desk: '#7c6e5a',
-    shelf: '#8B7D6B', stairs: '#a0a0a0', wardrobe: '#7c6e5a', box: '#b8a898',
-  }
-  return colors[shape] ?? '#b8a898'
+function resolveShape(f: FurnitureItem): string {
+  return f.shape ?? getShapeType(f.name)
 }
 
 export function FurnitureMesh({
@@ -56,18 +52,18 @@ export function FurnitureMesh({
 }: FurnitureMeshProps) {
   const w = furniture.width
   const l = furniture.length
-  const h = getShapeHeight(furniture.name)
-  const color = getShapeColor(furniture.name)
-  const shape = getShapeType(furniture.name)
+  const shape = resolveShape(furniture)
+  const h = SHAPE_HEIGHTS[shape] ?? 0.8
+  const color = SHAPE_COLORS[shape] ?? '#b8a898'
 
   return (
     <group
       ref={onGroupRef}
       position={[worldX, 0, worldZ]}
-      onClick={(e) => {
+      onClick={onClick ? (e) => {
         e.stopPropagation()
         onClick()
-      }}
+      } : undefined}
     >
       {shape === 'sofa' && (
         <>

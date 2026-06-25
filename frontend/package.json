@@ -16,11 +16,14 @@
   "dependencies": {
     "@react-three/drei": "^9.114.3",
     "@react-three/fiber": "^8.17.10",
+    "@react-three/xr": "^6.6.30",
     "@types/three": "^0.160.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "three": "^0.160.0",
-    "zustand": "^4.5.5"
+    "three-mesh-bvh": "^0.8.3",
+    "zustand": "^4.5.5",
+    "react-router-dom": "^7.18.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
@@ -35,7 +38,6 @@
     "eslint-config-prettier": "^10.1.8",
     "jsdom": "^29.1.1",
     "prettier": "^3.8.4",
-    "react-router-dom": "^7.18.0",
     "typescript": "^5.6.3",
     "vite": "^5.4.11",
     "vitest": "^4.1.9"

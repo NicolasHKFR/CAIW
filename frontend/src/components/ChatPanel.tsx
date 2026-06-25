@@ -29,10 +29,10 @@ export function ChatPanel() {
         console.error('[ChatPanel] Failed to create project:', e)
         return
       }
+      loadProjects()
     }
 
     sendMessage(pid, text)
-    loadProjects()
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

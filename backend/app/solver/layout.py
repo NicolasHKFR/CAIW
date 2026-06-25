@@ -5,7 +5,9 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Optional
 
-from app.models.schemas import DesignDefinition, RoomSpec
+from typing import Any
+
+from app.models.schemas import DesignDefinition, RoomSpec, DoorSpec, FurnitureItem
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +85,26 @@ SPECIAL_FURNITURE: dict[str, tuple[float, float, float, float | None, float | No
     "washbasin":       (0.6, 0.5, 0.15, None, None),
 }
 
+# Furniture name → 3D shape mapping (mirrors frontend FurnitureMesh.tsx)
+FURNITURE_SHAPE_MAP: dict[str, str] = {
+    "sofa": "sofa", "couch": "sofa", "canapé": "sofa", "canape": "sofa",
+    "bed": "bed", "double bed": "bed", "single bed": "bed", "bunk bed": "bed",
+    "table": "table", "coffee table": "table", "dining table": "table", "side table": "table",
+    "chair": "chair", "armchair": "chair", "chaise": "chair",
+    "cabinet": "cabinet", "showcase": "cabinet",
+    "bathtub": "bathtub", "bath": "bathtub", "tub": "bathtub",
+    "toilet": "toilet", "wc": "toilet",
+    "desk": "desk", "writing desk": "desk", "computer desk": "desk",
+    "bookshelf": "shelf", "bookcase": "shelf", "shelf": "shelf",
+    "stairs": "stairs", "staircase": "stairs",
+    "wardrobe": "wardrobe", "closet": "wardrobe", "armoire": "wardrobe",
+    "kitchen island": "cabinet",
+    "shoe cabinet": "cabinet", "coat rack": "cabinet",
+    "tv unit": "cabinet", "television unit": "cabinet",
+    "nightstand": "cabinet", "sideboard": "cabinet",
+    "sink": "cabinet", "washbasin": "cabinet",
+}
+
 
 # ── Helpers ──
 
@@ -108,7 +130,7 @@ def _shared_edge(a: RoomSpec, b: RoomSpec) -> bool:
     return False
 
 
-def _shared_edge_length(a: RoomSpec, b: RoomSpec) -> float:
+def _shared_edge_length(a: "RoomSpec | _Rect", b: "RoomSpec | _Rect") -> float:
     """Return the length of shared edge between two rooms, or 0 if none."""
     if a.x is None or a.y is None or a.w is None or a.h is None:
         return 0.0
@@ -173,9 +195,9 @@ def _adjacency_sort(rooms: list[RoomSpec]) -> list[RoomSpec]:
     seed = max(rest, key=lambda r: len(adj.get(r.id, set())))
     ordered: list[RoomSpec] = []
     visited: set[str] = set()
-    queue: list[str] = [seed.id]
+    queue: deque[str] = deque([seed.id])
     while queue:
-        rid = queue.pop(0)
+        rid = queue.popleft()
         if rid in visited:
             continue
         visited.add(rid)
@@ -201,7 +223,11 @@ def _place_rooms_guillotine(
     placed: list[RoomSpec] = []
     constraints = ROOM_CONSTRAINTS if room_constraints is None else room_constraints
 
-    sorted_rooms = _adjacency_sort(rooms)
+    if shuffle_rest:
+        sorted_rooms = list(rooms)
+        random.shuffle(sorted_rooms)
+    else:
+        sorted_rooms = _adjacency_sort(rooms)
 
     for idx, room in enumerate(sorted_rooms):
         remaining = sorted_rooms[idx + 1:]
@@ -254,7 +280,9 @@ def _place_rooms_guillotine(
 
         rect = free.pop(best_idx)
 
-        # First circulation room becomes a full-width spine for better adjacency
+        # First circulation room becomes a full-width spine for better adjacency.
+        # If the floor has a hallway spine that runs the full width, split vertically
+        # below the spine so remaining rooms can be placed on both sides.
         is_spine = (
             idx == 0
             and room.type in ("hallway", "hall", "landing", "stairs")
@@ -266,6 +294,12 @@ def _place_rooms_guillotine(
             rh = max(min_req_h, target / rw if rw > 0 else min_req_h)
             if rh > rect.h:
                 rh = rect.h
+            # After placing spine, also add a vertical split so rooms
+            # can be placed to the right as well as below
+            if rect.y == 0 and rw > rh * 2:
+                pass
+            else:
+                use_v_split = False
         else:
             rw = min(rect.w, max(min_req_w, math.sqrt(target * (rect.w / rect.h))))
             rh = max(min_req_h, target / rw if rw > 0 else min_req_h)
@@ -583,10 +617,10 @@ def _validate_adjacencies(definition: DesignDefinition, errors: list[str]) -> No
                 continue
             # Fallback: BFS through shared-wall graph
             visited = {room.id}
-            queue = [room.id]
+            queue: deque[str] = deque([room.id])
             found = False
             while queue and not found:
-                cur = queue.pop(0)
+                cur = queue.popleft()
                 for nid in wall_adj.get(cur, set()):
                     if nid == conn_id:
                         found = True
@@ -651,18 +685,48 @@ def _validate_circulation(definition: DesignDefinition, errors: list[str]) -> No
             )
 
 
+def _furniture_overlap(a: Any, b: Any) -> bool:
+    return a.x < b.x + b.width and a.x + a.width > b.x and a.y < b.y + b.length and a.y + a.length > b.y
+
+
 def _auto_fit_furniture(rooms: list[RoomSpec]) -> None:
-    """Clamp furniture positions to fit within room dimensions + clearance."""
+    """Clamp furniture positions to fit within room dimensions + clearance.
+    Repositions overlapping items by scanning for available space."""
     for room in rooms:
         if room.w is None or room.h is None:
             continue
-        room.w = max(room.w, 0.5)
-        room.h = max(room.h, 0.5)
+        placed: list[FurnitureItem] = []
         for f in room.furniture or []:
             max_x = room.w - f.width - CLEARANCE
             max_y = room.h - f.length - CLEARANCE
-            f.x = round(max(CLEARANCE, min(f.x, max_x if max_x >= CLEARANCE else room.w / 2 - f.width / 2)), 2)
-            f.y = round(max(CLEARANCE, min(f.y, max_y if max_y >= CLEARANCE else room.h / 2 - f.length / 2)), 2)
+            if max_x < CLEARANCE:
+                f.x = round(CLEARANCE, 2)
+            else:
+                f.x = round(max(CLEARANCE, min(f.x, max_x)), 2)
+            if max_y < CLEARANCE:
+                f.y = round(CLEARANCE, 2)
+            else:
+                f.y = round(max(CLEARANCE, min(f.y, max_y)), 2)
+
+            # Resolve overlap by scanning for free space
+            for _ in range(50):
+                overlap = False
+                for p in placed:
+                    if _furniture_overlap(f, p):
+                        overlap = True
+                        break
+                if not overlap:
+                    break
+                # Shift down-right by clearance step
+                f.x = round(f.x + CLEARANCE, 2)
+                if f.x + f.width > room.w - CLEARANCE:
+                    f.x = round(CLEARANCE, 2)
+                    f.y = round(f.y + CLEARANCE, 2)
+                elif f.y + f.length > room.h - CLEARANCE:
+                    f.y = round(CLEARANCE, 2)
+                    f.x = round(CLEARANCE, 2)
+
+            placed.append(f.model_copy(deep=True))
 
 
 def _patch_constraints_for_furniture(rooms: list[RoomSpec]) -> dict[str, RoomConstraint]:
@@ -725,6 +789,25 @@ def _validate_furniture(room: RoomSpec) -> list[str]:
     return errors
 
 
+def _assign_furniture_shapes(result: DesignDefinition) -> None:
+    """Set shape field on each FurnitureItem based on FURNITURE_SHAPE_MAP."""
+    name_lower = {k.lower(): v for k, v in FURNITURE_SHAPE_MAP.items()}
+    for room in result.rooms:
+        for f in room.furniture:
+            if f.shape:
+                continue
+            key = f.name.strip().lower()
+            if key in name_lower:
+                f.shape = name_lower[key]
+            else:
+                for pattern, shape in name_lower.items():
+                    if pattern in key or key in pattern:
+                        f.shape = shape
+                        break
+                else:
+                    f.shape = "box"
+
+
 # ── Solver ──
 
 def solve_layout(definition: DesignDefinition) -> DesignDefinition:
@@ -747,6 +830,7 @@ def solve_layout(definition: DesignDefinition) -> DesignDefinition:
                     "[SOLVER] Layout valid on attempt %d/%d | %d rooms",
                     attempt + 1, MAX_RETRIES, len(result.rooms),
                 )
+                _assign_furniture_shapes(result)
                 return result
 
             logger.warning(
@@ -774,6 +858,8 @@ def _solve_attempt(definition: DesignDefinition, ar: float, attempt: int) -> Des
 
     room_constraints = _patch_constraints_for_furniture(definition.rooms)
 
+    stairs_aligned: dict[str, RoomSpec] = {}
+
     for floor_num in sorted(by_floor.keys()):
         floor_rooms = list(by_floor[floor_num])
 
@@ -784,7 +870,7 @@ def _solve_attempt(definition: DesignDefinition, ar: float, attempt: int) -> Des
         )
 
         accounted = sum(r.targetArea for r in solved_all)
-        remaining = total_area - accounted
+        remaining = max(0.0, total_area - accounted)
 
         if floor_requested > remaining:
             scale = remaining / floor_requested if floor_requested > 0 else 0.1
@@ -820,11 +906,66 @@ def _solve_attempt(definition: DesignDefinition, ar: float, attempt: int) -> Des
 
     _auto_fit_furniture(solved_all)
 
+    # Align stairs positions across floors so they stack vertically
+    stairs_rooms = [r for r in solved_all if r.type == "stairs"]
+    if len(stairs_rooms) > 1:
+        # Find the first placed stairs room as reference
+        ref = min(stairs_rooms, key=lambda r: r.floor)
+        for sr in stairs_rooms:
+            if sr.id != ref.id and sr.x is not None and ref.x is not None:
+                sr.x = ref.x
+            if sr.id != ref.id and sr.y is not None and ref.y is not None:
+                sr.y = ref.y
+
     solved_all.sort(key=lambda r: r.id or "")
     definition.rooms = solved_all
+    definition.doors = _compute_doors(definition)
 
     _log_adjacency_summary(definition)
     return definition
+
+
+def _compute_doors(definition: DesignDefinition) -> list[DoorSpec]:
+    """Compute door positions at shared-wall midpoints between connected rooms."""
+    doors: list[DoorSpec] = []
+    id_map = {r.id: r for r in definition.rooms if r.id}
+    rooms = list(definition.rooms)
+    done: set[tuple[str, str]] = set()
+
+    for i, a in enumerate(rooms):
+        if a.id is None: continue
+        for j, b in enumerate(rooms):
+            if i >= j or b.id is None: continue
+            key = tuple(sorted([a.id, b.id]))
+            if key in done: continue
+            if a.floor != b.floor: continue
+
+            is_connected = (a.id in (b.preferredConnections or [])) or (b.id in (a.preferredConnections or []))
+            if not is_connected: continue
+
+            edge_len = _shared_edge_length(a, b)
+            if edge_len < 0.5: continue
+
+            done.add(key)
+
+            if abs(a.y - b.y - b.h) < 0.01:
+                # b is below a (north wall of a)
+                center = max(a.x, b.x) + edge_len / 2
+                doors.append(DoorSpec(roomA=a.id, roomB=b.id, side="north", position=round(center - a.x, 2)))
+            elif abs(b.y - a.y - a.h) < 0.01:
+                # b is above a (south wall of a)
+                center = max(a.x, b.x) + edge_len / 2
+                doors.append(DoorSpec(roomA=a.id, roomB=b.id, side="south", position=round(center - a.x, 2)))
+            elif abs(a.x - b.x - b.w) < 0.01:
+                # b is to the right of a (west wall of a)
+                center = max(a.y, b.y) + edge_len / 2
+                doors.append(DoorSpec(roomA=a.id, roomB=b.id, side="west", position=round(center - a.y, 2)))
+            elif abs(b.x - a.x - a.w) < 0.01:
+                # b is to the left of a (east wall of a)
+                center = max(a.y, b.y) + edge_len / 2
+                doors.append(DoorSpec(roomA=a.id, roomB=b.id, side="east", position=round(center - a.y, 2)))
+
+    return doors
 
 
 def _log_adjacency_summary(definition: DesignDefinition) -> None:
@@ -863,7 +1004,7 @@ def _has_hallway(rooms: list[RoomSpec]) -> bool:
 
 
 def auto_generate_hallway(definition: DesignDefinition) -> DesignDefinition:
-    rooms = list(definition.rooms)
+    rooms = [r.model_copy(deep=True) for r in definition.rooms]
     by_floor = _group_by_floor(rooms)
 
     new_rooms: list[RoomSpec] = []
@@ -875,12 +1016,24 @@ def auto_generate_hallway(definition: DesignDefinition) -> DesignDefinition:
 
         floor_requested = sum(r.targetArea for r in floor_rooms)
         hall_area = max(6.0, floor_requested * 0.08)
-        parking = hall_area
 
+        # Deduct proportionally from each room's surplus above min area
+        available = 0.0
+        room_surplus: list[tuple[RoomSpec, float]] = []
         for r in floor_rooms:
-            if r.targetArea > parking:
-                deduction = parking / len(floor_rooms)
-                r.targetArea = max(4.0, r.targetArea - deduction)
+            const = ROOM_CONSTRAINTS.get(r.type)
+            min_area = (const.min_width * const.min_height) if const else 4.0
+            surplus = r.targetArea - min_area
+            if surplus > 0:
+                available += surplus
+                room_surplus.append((r, surplus))
+
+        if room_surplus and available > 0:
+            to_deduct = min(hall_area, available)
+            total_surplus = sum(s for _, s in room_surplus)
+            for r, surplus in room_surplus:
+                deduction = to_deduct * (surplus / total_surplus)
+                r.targetArea = round(r.targetArea - deduction, 1)
 
         hall_connections = [r.id for r in floor_rooms if r.id]
         hall = RoomSpec(

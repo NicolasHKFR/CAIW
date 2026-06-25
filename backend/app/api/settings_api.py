@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
-def _mask_key(key: str) -> str:
+def mask_key(key: str) -> str:
     if not key or len(key) < 8:
         return key
     return key[:6] + "****" + key[-4:]
@@ -35,14 +35,10 @@ async def _load_settings() -> dict:
         "nvidia_api_key": settings.nvidia_api_key,
         "nvidia_endpoint": settings.nvidia_endpoint,
         "nvidia_model": settings.nvidia_model,
-        "image_provider": settings.image_provider,
+        "openrouter_api_key": settings.openrouter_api_key,
+        "openrouter_endpoint": settings.openrouter_endpoint,
+        "openrouter_model": settings.openrouter_model,
         "image_endpoint": settings.image_endpoint,
-        "openai_api_key": "",
-        "replicate_api_key": "",
-        "sd_controlnet_model": settings.sd_controlnet_model,
-        "sd_steps": settings.sd_steps,
-        "sd_width": settings.sd_width,
-        "sd_height": settings.sd_height,
     }
     try:
         async with async_session() as db:
@@ -59,8 +55,8 @@ async def _save_settings(data: dict) -> None:
     valid_keys = {
         "mock_mode", "llm_provider", "llm_endpoint", "llm_model",
         "nvidia_api_key", "nvidia_endpoint", "nvidia_model",
-        "image_provider", "image_endpoint", "openai_api_key", "replicate_api_key",
-        "sd_controlnet_model", "sd_steps", "sd_width", "sd_height",
+        "openrouter_api_key", "openrouter_endpoint", "openrouter_model",
+        "image_endpoint",
     }
     try:
         async with async_session() as db:
@@ -85,15 +81,15 @@ async def _save_settings(data: dict) -> None:
 async def get_settings():
     data = await _load_settings()
     masked = dict(data)
-    for k in ("nvidia_api_key", "openai_api_key", "replicate_api_key"):
-        masked[k] = _mask_key(masked.get(k, ""))
+    for k in ("nvidia_api_key", "openrouter_api_key"):
+        masked[k] = mask_key(masked.get(k, ""))
     return SettingsResponse(**masked)
 
 
 @router.put("", response_model=SettingsResponse)
 async def update_settings(body: SettingsResponse):
     data = body.model_dump(exclude_unset=True)
-    for k in ("nvidia_api_key", "openai_api_key", "replicate_api_key"):
+    for k in ("nvidia_api_key", "openrouter_api_key"):
         val = data.get(k)
         if val and "****" in val:
             data.pop(k, None)

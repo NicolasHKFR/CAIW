@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -6,18 +7,31 @@ from typing import AsyncIterator
 from sqlalchemy import select
 
 from app.core.config import settings
-from app.core.config import settings
 from app.core.database import async_session
 from app.models.database import Model
 from app.models.schemas import DesignDefinition, WsProgress, WsComplete, WsError
 from app.solver.layout import solve_layout, validate_layout, auto_generate_hallway, MOCK_DEFINITION, LayoutError
 from app.services.llm_service import call_llm, MOCK_RESPONSE
-from app.services.image_service import _generate_floor_plan_svg
+from app.services.image_service import generate_floor_plan_svg, call_sd_api
 
 logger = logging.getLogger(__name__)
 
 
 async def run_generation_pipeline(
+    prompt: str,
+    project_id: str,
+    version: int,
+    assets_dir: str,
+) -> AsyncIterator[dict]:
+    try:
+        async for event in _pipeline(prompt, project_id, version, assets_dir):
+            yield event
+    except asyncio.CancelledError:
+        logger.info("[ORCH] Generation cancelled for project %s", project_id)
+        raise
+
+
+async def _pipeline(
     prompt: str,
     project_id: str,
     version: int,
@@ -40,6 +54,8 @@ async def run_generation_pipeline(
             api_key = active_model.api_key or ""
             if not api_key and active_model.provider == "nvidia":
                 api_key = settings.nvidia_api_key or ""
+            if not api_key and active_model.provider == "openrouter":
+                api_key = settings.openrouter_api_key or ""
 
             logger.info(
                 "[ORCH] Calling LLM | provider=%s model=%s endpoint=%s",
@@ -101,12 +117,17 @@ async def run_generation_pipeline(
     definition_dict = json.loads(definition.model_dump_json())
 
     import aiofiles
-    svg_content = _generate_floor_plan_svg(definition_dict)
+    svg_content = generate_floor_plan_svg(definition_dict)
     plan_path = os.path.join(assets_dir, "floor_plan.svg")
     async with aiofiles.open(plan_path, "w") as f:
         await f.write(svg_content)
 
     render_path = None
+    if not settings.mock_ai:
+        try:
+            render_path = await call_sd_api(definition_dict, definition.style, assets_dir)
+        except Exception as e:
+            logger.warning("[ORCH] Concept render generation failed: %s", e)
 
     def to_url(p: str | None) -> str | None:
         if not p:

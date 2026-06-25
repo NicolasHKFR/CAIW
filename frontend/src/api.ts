@@ -1,4 +1,4 @@
-import type { Project, Design, DesignDefinition, WsMessage, AppSettings, ModelItem, ModelCreatePayload, FurnitureCatalogItem, ChatMessageDB, FurnitureGenerateRequest } from './types'
+import type { Project, Design, DesignDefinition, WsMessage, AppSettings, ModelItem, ModelCreatePayload, FurnitureCatalogItem, ChatMessageDB, FurnitureGenerateRequest, IntelligenceResponse, EvolutionEntry } from './types'
 
 const BASE = ''
 export const API_BASE = BASE
@@ -87,6 +87,15 @@ export const api = {
       body: JSON.stringify({ role, content }),
     }),
 
+  getIntelligence: (projectId: string, version: number, lat?: number, lon?: number) =>
+    request<IntelligenceResponse>(`/api/designs/${projectId}/${version}/intelligence${lat != null ? `?lat=${lat}&lon=${lon ?? -74.0}` : ''}`),
+
+  getEvolution: (projectId: string) =>
+    request<EvolutionEntry[]>(`/api/designs/${projectId}/evolution`),
+
+  getIntelligenceReport: (projectId: string, version: number) =>
+    `${API_BASE}/api/designs/${projectId}/${version}/intelligence/report`,
+
   exportPdf: (projectId: string, version: number) =>
     `${API_BASE}/api/export/projects/${projectId}/versions/${version}/pdf`,
 
@@ -147,7 +156,6 @@ export function createChatSocket(
   onMessage: (msg: WsMessage) => void,
   onError?: (err: Event) => void,
   onCancel?: () => void,
-  onReconnect?: (ws: WebSocket) => void,
 ): WebSocket {
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
   const host = location.host
@@ -155,8 +163,6 @@ export function createChatSocket(
   console.log('[WS] Connecting to', url)
   const ws = new WebSocket(url)
   let closed = false
-  let reconnectAttempts = 0
-  const maxReconnect = 3
 
   const cleanup = () => {
     closed = true
@@ -168,7 +174,6 @@ export function createChatSocket(
 
   ws.onopen = () => {
     console.log('[WS] Connected, sending message')
-    reconnectAttempts = 0
     ws.send(JSON.stringify({ project_id: projectId, message }))
   }
   ws.onmessage = (event) => {
@@ -189,19 +194,10 @@ export function createChatSocket(
   }
   ws.onclose = (event) => {
     if (closed) return
-    if (reconnectAttempts < maxReconnect && event.code !== 1000) {
-      reconnectAttempts++
-      const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 8000)
-      console.log(`[WS] Reconnecting in ${delay}ms (attempt ${reconnectAttempts}/${maxReconnect})`)
-      setTimeout(() => {
-        if (!closed) {
-          const ws2 = createChatSocket(projectId, message, onMessage, onError, onCancel, onReconnect)
-          if (onReconnect) onReconnect(ws2)
-        }
-      }, delay)
-      return
-    }
     cleanup()
+    if (event.code !== 1000) {
+      console.warn('[WS] Connection lost before generation completed')
+    }
     onCancel?.()
   }
   return ws

@@ -9,6 +9,15 @@ class FurnitureItem(BaseModel):
     y: float = 0.0
     width: float = 1.0
     length: float = 1.0
+    shape: str = ""
+
+
+class DoorSpec(BaseModel):
+    roomA: str
+    roomB: str
+    side: str  # north/south/east/west relative to roomA
+    position: float  # center position along the shared wall (in roomA's local coords)
+    width: float = 0.9
 
 
 class RoomSpec(BaseModel):
@@ -44,6 +53,7 @@ class DesignDefinition(BaseModel):
     style: str = "scandinavian"
     aspectRatio: float | None = None
     rooms: list[RoomSpec] = []
+    doors: list[DoorSpec] = []
     materials: list[MaterialSuggestion] = []
     estimatedBudget: BudgetBreakdown | None = None
 
@@ -81,20 +91,16 @@ class DesignUpdate(BaseModel):
 
 class SettingsResponse(BaseModel):
     mock_mode: bool = True
-    llm_provider: str = "nvidia"
-    llm_endpoint: str = "http://localhost:11434"
-    llm_model: str = "mistral"
+    llm_provider: str = "openrouter"
+    llm_endpoint: str = "https://openrouter.ai/api/v1"
+    llm_model: str = "openrouter/free"
     nvidia_api_key: str = ""
     nvidia_endpoint: str = "https://integrate.api.nvidia.com/v1"
     nvidia_model: str = "moonshotai/kimi-k2.6"
-    image_provider: str = "local_sd"
-    image_endpoint: str = "http://localhost:7860"
-    openai_api_key: str = ""
-    replicate_api_key: str = ""
-    sd_controlnet_model: str = "control_v11p_sd15_mlsd"
-    sd_steps: int = 20
-    sd_width: int = 640
-    sd_height: int = 448
+    openrouter_api_key: str = ""
+    openrouter_endpoint: str = "https://openrouter.ai/api/v1"
+    openrouter_model: str = "openrouter/free"
+    image_endpoint: str = "http://localhost:8188"
 
 
 class WsChatRequest(BaseModel):

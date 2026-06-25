@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import itertools
 import json
 import logging
 import os
@@ -17,16 +18,15 @@ DEFAULT_NEGATIVE = "blurry, low quality, distorted, bad proportions, worst quali
 WORKFLOW_DIR = None
 
 
-def _node_id(start: int = 1) -> int:
-    if not hasattr(_node_id, "_counter"):
-        _node_id._counter = start
-    nid = _node_id._counter
-    _node_id._counter += 1
-    return nid
+_node_counter = itertools.count(1)
+
+def _node_id() -> int:
+    return next(_node_counter)
 
 
 def _reset_counter(start: int = 1):
-    _node_id._counter = start
+    global _node_counter
+    _node_counter = itertools.count(start)
 
 
 def _build_txt2img_workflow(
@@ -340,9 +340,9 @@ async def _wait_for_output_files(prompt_id: str, prefix: str, poll_interval: flo
                             raise RuntimeError(f"ComfyUI generation failed: {error_msg}")
         except httpx.TimeoutException:
             pass
+        except RuntimeError:
+            raise
         except Exception as e:
-            if "RuntimeError" in type(e).__name__:
-                raise
             logger.debug("[COMFY] Poll attempt %d: %s", attempt, e)
         await asyncio.sleep(poll_interval)
     raise TimeoutError(f"ComfyUI generation timed out for prompt {prompt_id}")

@@ -1,5 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useNavigate, useLocation, useParams } from 'react-router-dom'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { ConnectionStatus } from './components/ConnectionStatus'
 import { ComfyStatus } from './components/ComfyStatus'
@@ -7,12 +7,13 @@ import { ToastContainer } from './components/Toast'
 import { ChatPanel } from './components/ChatPanel'
 import { FloorPlanCanvas } from './components/FloorPlanCanvas'
 import { ProjectSidebar } from './components/ProjectSidebar'
-import { DesignPreview } from './components/DesignPreview'
 import { FurnitureGeneratorPage } from './components/FurnitureGeneratorPage'
+import { ShortcutGuide } from './components/ShortcutGuide'
 import { ProjectManagerPage } from './components/ProjectManagerPage'
 import { DesignEditorPage } from './components/DesignEditorPage'
 import { ImageImportPage } from './components/ImageImportPage'
 import { ModelViewer3DPage } from './components/ModelViewer3DPage'
+
 import { api } from './api'
 import { useProjectStore } from './store/projectStore'
 import { useChatStore } from './store/chatStore'
@@ -24,10 +25,20 @@ const SettingsPanel = lazy(() =>
 const CatalogPanel = lazy(() =>
   import('./components/CatalogPanel').then((m) => ({ default: m.CatalogPanel }))
 )
+const IntelligencePage = lazy(() =>
+  import('./components/IntelligencePage').then((m) => ({ default: m.IntelligencePage }))
+)
+const WalkthroughPage = lazy(() =>
+  import('./pages/WalkthroughPage').then((m) => ({ default: m.WalkthroughPage }))
+)
+const WelcomePage = lazy(() =>
+  import('./pages/WelcomePage').then((m) => ({ default: m.WelcomePage }))
+)
 
 function MainLayout() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { projectId } = useParams<{ projectId: string }>()
   const [showSettings, setShowSettings] = useState(false)
   const [showCatalog, setShowCatalog] = useState(false)
   const [connected, setConnected] = useState(false)
@@ -35,8 +46,14 @@ function MainLayout() {
   const [mockMode, setMockMode] = useState(false)
   const [comfyConnected, setComfyConnected] = useState(false)
   const [comfyChecking, setComfyChecking] = useState(true)
-  const { activeProjectId, loadDesigns, designs } = useProjectStore()
-  const chatStore = useChatStore()
+  const { activeProjectId, setActiveProject, loadDesigns, designs } = useProjectStore()
+  const { loadMessages, clearMessages } = useChatStore()
+
+  useEffect(() => {
+    if (projectId && projectId !== activeProjectId) {
+      setActiveProject(projectId)
+    }
+  }, [projectId])
 
   const refreshConnection = () => {
     api.health()
@@ -61,9 +78,9 @@ function MainLayout() {
   useEffect(() => {
     if (activeProjectId) {
       loadDesigns(activeProjectId)
-      chatStore.loadMessages(activeProjectId)
+      loadMessages(activeProjectId)
     } else {
-      chatStore.clearMessages()
+      clearMessages()
     }
   }, [activeProjectId, loadDesigns, location.pathname])
 
@@ -101,7 +118,7 @@ function MainLayout() {
   return (
     <div className={styles.app}>
       <header className={styles.header}>
-        <div className={styles.headerLeft}>
+        <div className={styles.headerLeft} style={{ cursor: 'pointer' }} onClick={() => navigate('/')}>
           <h1 className={styles.logo}>CAIW</h1>
           <span className={styles.tagline}>AI Design Studio</span>
         </div>
@@ -134,6 +151,24 @@ function MainLayout() {
               >
                 3D
               </button>
+              <button
+                className={styles.settingsBtn}
+                onClick={() => {
+                  const latest = designs.reduce((a, b) => a.version > b.version ? a : b)
+                  navigate(`/walkthrough?project=${activeProjectId}&version=${latest.version}`)
+                }}
+              >
+                VR
+              </button>
+              <button
+                className={styles.settingsBtn}
+                onClick={() => {
+                  const latest = designs.reduce((a, b) => a.version > b.version ? a : b)
+                  navigate(`/intelligence?project=${activeProjectId}&version=${latest.version}`)
+                }}
+              >
+                Insights
+              </button>
             </>
           )}
           <button className={styles.settingsBtn} onClick={() => navigate('/furniture')}>
@@ -149,10 +184,7 @@ function MainLayout() {
           <ChatPanel />
         </ErrorBoundary>
         <main className={styles.main}>
-          <ErrorBoundary>
-            <FloorPlanCanvas />
-          </ErrorBoundary>
-          <DesignPreview />
+          <FloorPlanCanvas />
         </main>
         <ErrorBoundary>
           <ProjectSidebar />
@@ -168,6 +200,7 @@ function MainLayout() {
           <SettingsPanel onClose={() => setShowSettings(false)} onSettingsChange={refreshConnection} />
         </Suspense>
       )}
+      <ShortcutGuide />
       <ToastContainer />
     </div>
   )
@@ -177,13 +210,16 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<MainLayout />} />
+        <Route path="/" element={<ErrorBoundary><Suspense fallback={<div className={styles.bodySkeleton}><div className={styles.skeletonMain}><div className={styles.skeletonShimmer} style={{ height: '100%' }} /></div></div>}><WelcomePage /></Suspense></ErrorBoundary>} />
+        <Route path="/project/new" element={<MainLayout />} />
         <Route path="/project/:projectId" element={<MainLayout />} />
         <Route path="/furniture" element={<ErrorBoundary><FurnitureGeneratorPage /></ErrorBoundary>} />
         <Route path="/projects" element={<ErrorBoundary><ProjectManagerPage /></ErrorBoundary>} />
         <Route path="/design-editor" element={<ErrorBoundary><DesignEditorPage /></ErrorBoundary>} />
         <Route path="/import" element={<ErrorBoundary><ImageImportPage /></ErrorBoundary>} />
         <Route path="/3d-viewer" element={<ErrorBoundary><ModelViewer3DPage /></ErrorBoundary>} />
+        <Route path="/walkthrough" element={<ErrorBoundary><Suspense fallback={<div className={styles.bodySkeleton}><div className={styles.skeletonMain}><div className={styles.skeletonShimmer} style={{ height: '100%' }} /></div></div>}><WalkthroughPage /></Suspense></ErrorBoundary>} />
+        <Route path="/intelligence" element={<ErrorBoundary><Suspense fallback={null}><IntelligencePage /></Suspense></ErrorBoundary>} />
       </Routes>
     </BrowserRouter>
   )

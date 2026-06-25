@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { api } from '../api'
 import type { DesignDefinition } from '../types'
+import { WALL_HEIGHT } from '../constants'
 
 export interface SelectionState {
   objectId: string | null
@@ -36,6 +37,7 @@ export interface SceneState {
   toggleWindows: () => void
   selectObject: (objectId: string, objectType: 'room' | 'furniture', roomParentId?: string) => void
   clearSelection: () => void
+  removeSelectedRoom: () => Promise<void>
 }
 
 export const useSceneStore = create<SceneState>((set, get) => ({
@@ -46,7 +48,7 @@ export const useSceneStore = create<SceneState>((set, get) => ({
   error: null,
   mode: 'house',
   activeFloor: 1,
-  wallHeight: 2.5,
+  wallHeight: WALL_HEIGHT,
   showWalls: true,
   showLabels: true,
   showGrid: true,
@@ -87,4 +89,17 @@ export const useSceneStore = create<SceneState>((set, get) => ({
 
   clearSelection: () =>
     set({ selection: { objectId: null, objectType: null, roomParentId: null } }),
+
+  removeSelectedRoom: async () => {
+    const { selection, definition, projectId, designVersion } = get()
+    if (!definition || !projectId || !designVersion || !selection.objectId || selection.objectType !== 'room') return
+    const updatedRooms = definition.rooms.filter(r => r.id !== selection.objectId)
+    const updatedDef: DesignDefinition = { ...definition, rooms: updatedRooms }
+    set({ definition: updatedDef, selection: { objectId: null, objectType: null, roomParentId: null } })
+    try {
+      await api.updateDesign(projectId, designVersion, updatedDef)
+    } catch {
+      set({ definition })
+    }
+  },
 }))

@@ -90,7 +90,10 @@ export function ProjectManagerPage() {
     <div className={styles.page}>
       <header className={styles.header}>
         <div className={styles.headerLeft}>
-          <button className={styles.backBtn} onClick={() => navigate('/')}>
+          <button className={styles.homeBtn} onClick={() => navigate('/')}>
+            CAIW
+          </button>
+          <button className={styles.backBtn} onClick={() => navigate(-1)}>
             &larr; Back
           </button>
           <h1 className={styles.title}>Project Manager</h1>
@@ -169,7 +172,7 @@ export function ProjectManagerPage() {
                 <tr
                   key={p.id}
                   className={`${styles.row} ${selected.has(p.id) ? styles.rowSelected : ''}`}
-                  onClick={() => toggleSelect(p.id)}
+                  onClick={() => navigate(`/project/${p.id}`)}
                 >
                   <td className={styles.colCheck} onClick={(e) => e.stopPropagation()}>
                     <input

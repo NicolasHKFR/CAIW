@@ -12,13 +12,15 @@ const PROVIDER_LABELS: Record<string, string> = {
   nvidia: 'NVIDIA',
   ollama: 'Ollama',
   openai: 'OpenAI',
-  lmstudio: 'Local (LM Studio)',
+  openrouter: 'OpenRouter',
+  lmstudio: 'LM Studio',
 }
 
 const PROVIDER_COLORS: Record<string, string> = {
   nvidia: '#76b900',
   ollama: '#00b4d8',
   openai: '#10a37f',
+  openrouter: '#ff6600',
   lmstudio: '#f59e0b',
 }
 
@@ -37,10 +39,10 @@ export function SettingsPanel({ onClose, onSettingsChange }: Props) {
   const [formModel, setFormModel] = useState('')
   const [formEndpoint, setFormEndpoint] = useState('')
   const [formApiKey, setFormApiKey] = useState('')
+  const [formModelType, setFormModelType] = useState('chat')
   const [availableModels, setAvailableModels] = useState<string[]>([])
   const [discovering, setDiscovering] = useState(false)
   const discoverTimer = useRef<ReturnType<typeof setTimeout>>()
-  const [formModelType, setFormModelType] = useState('chat')
 
   useEffect(() => {
     api.getSettings().then(setSettings)
@@ -160,14 +162,14 @@ export function SettingsPanel({ onClose, onSettingsChange }: Props) {
 
   if (!settings) return null
 
+  const activeModel = models.find((m) => m.is_active)
+
   return (
     <div className={styles.overlay} onClick={onClose}>
       <div className={styles.panel} onClick={(e) => e.stopPropagation()}>
         <div className={styles.header}>
           <h2 className={styles.title}>Settings</h2>
-          <button className={styles.closeBtn} onClick={onClose}>
-            ×
-          </button>
+          <button className={styles.closeBtn} onClick={onClose}>×</button>
         </div>
 
         <div className={styles.body}>
@@ -210,9 +212,10 @@ export function SettingsPanel({ onClose, onSettingsChange }: Props) {
                     </span>
                     <span className={styles.modelInfo}>
                       <span className={styles.modelName}>{m.model_name}</span>
-                      <span className={styles.modelType}>{m.model_type}</span>
                       <span className={styles.modelEndpoint}>{m.endpoint}</span>
                     </span>
+                    {m.is_active && <span className={styles.activeTag}>Active</span>}
+                    <span className={styles.modelType}>{m.model_type}</span>
                   </label>
                   <div className={styles.modelActions}>
                     <button
@@ -223,17 +226,13 @@ export function SettingsPanel({ onClose, onSettingsChange }: Props) {
                     >
                       {testStatus[m.id] === 'testing' ? '⌛' : testStatus[m.id] === 'ok' ? '✓' : testStatus[m.id] === 'error' ? '✗' : '▶'}
                     </button>
-                    <button className={styles.smallBtn} onClick={() => openEdit(m)} title="Edit">
-                      ✎
-                    </button>
+                    <button className={styles.smallBtn} onClick={() => openEdit(m)} title="Edit">✎</button>
                     <button
                       className={styles.smallBtn}
                       onClick={() => handleDelete(m.id)}
                       title="Delete"
                       disabled={m.is_active}
-                    >
-                      ×
-                    </button>
+                    >×</button>
                   </div>
                   {testMessage[m.id] && (
                     <span className={`${styles.testMsg} ${testStatus[m.id] === 'ok' ? styles.testOk : styles.testFail}`}>
@@ -255,7 +254,8 @@ export function SettingsPanel({ onClose, onSettingsChange }: Props) {
                     <option value="nvidia">NVIDIA</option>
                     <option value="ollama">Ollama</option>
                     <option value="openai">OpenAI</option>
-                    <option value="lmstudio">Local (LM Studio)</option>
+                    <option value="openrouter">OpenRouter</option>
+                    <option value="lmstudio">LM Studio</option>
                   </select>
                   {availableModels.length > 0 ? (
                     <select
@@ -271,9 +271,9 @@ export function SettingsPanel({ onClose, onSettingsChange }: Props) {
                     <input
                       className={styles.input}
                       placeholder={
-                        discovering ? 'Discovering models...' :
-                        formProvider === 'ollama' ? 'Model name (e.g. mistral)' :
-                        'Model name (e.g. moonshotai/kimi-k2.6)'
+                        discovering ? 'Discovering...' :
+                        formProvider === 'ollama' ? 'e.g. mistral' :
+                        'e.g. moonshotai/kimi-k2.6'
                       }
                       value={formModel}
                       onChange={(e) => setFormModel(e.target.value)}
@@ -288,19 +288,17 @@ export function SettingsPanel({ onClose, onSettingsChange }: Props) {
                     onChange={(e) => setFormModelType(e.target.value)}
                     title="Model type"
                   >
-                    <option value="chat">Chat (default)</option>
-                    <option value="tools">Tools (function calling)</option>
-                    <option value="reasoning">Reasoning (DeepSeek-style)</option>
+                    <option value="chat">Chat</option>
+                    <option value="tools">Tools</option>
+                    <option value="reasoning">Reasoning</option>
                   </select>
-                  <span className={styles.inputSpacer} />
-                </div>
-                <div className={styles.formRow}>
                   <input
                     className={styles.input}
                     placeholder={
                       formProvider === 'lmstudio' ? 'http://localhost:1234' :
                       formProvider === 'ollama' ? 'http://localhost:11434' :
                       formProvider === 'openai' ? 'https://api.openai.com/v1' :
+                      formProvider === 'openrouter' ? 'https://openrouter.ai/api/v1' :
                       'Endpoint URL'
                     }
                     value={formEndpoint}
@@ -310,7 +308,7 @@ export function SettingsPanel({ onClose, onSettingsChange }: Props) {
                     <input
                       className={styles.input}
                       type="password"
-                      placeholder="API key (leave blank to keep existing)"
+                      placeholder="API key"
                       value={formApiKey}
                       onChange={(e) => setFormApiKey(e.target.value)}
                     />
@@ -335,18 +333,7 @@ export function SettingsPanel({ onClose, onSettingsChange }: Props) {
           <div className={styles.section}>
             <span className={styles.sectionTitle}>Image Generation</span>
             <label className={styles.field}>
-              <span className={styles.label}>Image Provider</span>
-              <select
-                className={styles.select}
-                value={settings.image_provider}
-                onChange={(e) => setSettings({ ...settings, image_provider: e.target.value })}
-              >
-                <option value="local_sd">Stable Diffusion (Local)</option>
-                <option value="replicate">Replicate</option>
-              </select>
-            </label>
-            <label className={styles.field}>
-              <span className={styles.label}>Image Endpoint</span>
+              <span className={styles.label}>ComfyUI Endpoint</span>
               <input
                 className={styles.input}
                 value={settings.image_endpoint}

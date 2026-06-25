@@ -2,18 +2,7 @@ import * as THREE from 'three'
 import { useMemo } from 'react'
 import { type Group } from 'three'
 import type { RoomSpec } from '../types'
-
-const ROOM_COLORS = [
-  '#e8dcc8', '#c8d8e8', '#d4e8c8', '#f0d0d0', '#d0d0f0', '#f0e8c0', '#e0e0e0',
-]
-
-export function hashColor(id: string): string {
-  let hash = 0
-  for (let i = 0; i < id.length; i++) {
-    hash = id.charCodeAt(i) + ((hash << 5) - hash)
-  }
-  return ROOM_COLORS[Math.abs(hash) % ROOM_COLORS.length]
-}
+import { hashColor } from '../constants'
 
 export interface WallOpening {
   side: 'N' | 'S' | 'E' | 'W'
@@ -30,8 +19,8 @@ export interface RoomMeshProps {
   wallHeight: number
   showWalls: boolean
   isSelected: boolean
-  onClick: () => void
-  onGroupRef: (group: Group | null) => void
+  onClick?: () => void
+  onGroupRef?: (group: Group | null) => void
   openings?: WallOpening[]
 }
 
@@ -103,7 +92,7 @@ export function RoomMesh({
   }, [nOpenings, sOpenings, eOpenings, wOpenings, w, h, wallHeight])
 
   return (
-    <group ref={onGroupRef} position={[worldX, 0, worldZ]} onClick={(e) => { e.stopPropagation(); onClick() }}>
+    <group ref={onGroupRef} position={[worldX, 0, worldZ]} onClick={onClick ? (e) => { e.stopPropagation(); onClick() } : undefined}>
       <mesh geometry={floorGeo} scale={[w, 1, h]} position={[0, 0.025, 0]} receiveShadow>
         <meshStandardMaterial color={color} />
       </mesh>

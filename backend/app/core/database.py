@@ -44,6 +44,30 @@ async def with_retry(fn, *args, **kwargs):
             raise
 
 
+async def _seed_default_models(db):
+    from app.models.database import Model
+
+    nem = Model(
+        provider="openrouter",
+        model_name=settings.openrouter_model,
+        endpoint=settings.openrouter_endpoint,
+        api_key=settings.openrouter_api_key,
+        model_type="chat",
+        is_active=True,
+    )
+    db.add(nem)
+
+    kimi = Model(
+        provider="nvidia",
+        model_name=settings.nvidia_model,
+        endpoint=settings.nvidia_endpoint,
+        api_key=settings.nvidia_api_key,
+        model_type="chat",
+        is_active=False,
+    )
+    db.add(kimi)
+
+
 async def init_db():
     async with engine.begin() as conn:
         await conn.execute(text("PRAGMA journal_mode=WAL"))
@@ -70,12 +94,13 @@ async def init_db():
     async with async_session() as db:
         existing = await db.execute(select(func.count(Model.id)))
         if existing.scalar() == 0:
-            default = Model(
-                provider=settings.llm_provider,
-                model_name=settings.nvidia_model if settings.llm_provider == "nvidia" else settings.llm_model,
-                endpoint=settings.nvidia_endpoint if settings.llm_provider == "nvidia" else settings.llm_endpoint,
-                api_key=settings.nvidia_api_key if settings.llm_provider == "nvidia" else "",
-                is_active=True,
-            )
-            db.add(default)
+            await _seed_default_models(db)
             await db.commit()
+            logger.info("[DB] Seeded default models: OpenRouter/Nemotron (active) + NVIDIA/Kimi")
+
+        active = await db.execute(select(Model).where(Model.is_active == True))
+        m = active.scalar_one_or_none()
+        if m and m.provider == "openrouter" and m.model_name == "nvidia/nemotron-3-ultra-550b-a55b:free":
+            m.model_name = "openrouter/free"
+            await db.commit()
+            logger.info("[DB] Migrated active model: nemotron → openrouter/free")
